@@ -178,20 +178,20 @@ public class AsposeCarck {
      * @param sourceFile 源文件
      * @param targetFile 目标文件
      */
-    public static void doc2pdf(String sourceFile, String targetFile) {
-        try {
-            long old = System.currentTimeMillis();
-            FileOutputStream os = new FileOutputStream(targetFile);
-            com.aspose.words.Document
-            com.aspose.words.Document doc = new com.aspose.words.Document(sourceFile);
-            doc.save(os, com.aspose.words.SaveFormat.PDF);
-            os.close();
-            long now = System.currentTimeMillis();
-            System.out.println("共耗时：" + ((now - old) / 1000.0) + "秒");  //转化用时
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+//    public static void doc2pdf(String sourceFile, String targetFile) {
+//        try {
+//            long old = System.currentTimeMillis();
+//            FileOutputStream os = new FileOutputStream(targetFile);
+//            com.aspose.words.Document
+//            com.aspose.words.Document doc = new com.aspose.words.Document(sourceFile);
+//            doc.save(os, com.aspose.words.SaveFormat.PDF);
+//            os.close();
+//            long now = System.currentTimeMillis();
+//            System.out.println("共耗时：" + ((now - old) / 1000.0) + "秒");  //转化用时
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//    }
 
 
 }

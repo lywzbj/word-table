@@ -18,7 +18,7 @@ public class App {
     public static void main(String[] args) {
         WordOperator wordOperator = new WordOperator();
         File file = new File("/Users/luoyu/table3.docx");
-        try (  XWPFDocument doc = new XWPFDocument(new FileInputStream("/Users/luoyu/table1.docx"))) {
+        try (  XWPFDocument doc = new XWPFDocument(new FileInputStream("/Users/luoyu/table3.docx"))) {
             List<XWPFTable> tables = wordOperator.getCellNestedTables(doc, 0, 1);
             List<Map<String, String>> data = List.of(
                     Map.of("name", "张三", "age", "28", "dept", "研发部"),
@@ -29,23 +29,14 @@ public class App {
             XWPFTable xwpfTable = tables.get(0);
 
 
-           // wordOperator.printTable(xwpfTable);
-
-            List<XWPFTableRow> rows = xwpfTable.getRows();
+           wordOperator.printTable(xwpfTable);
 
 
-            XWPFTableRow xwpfTableRow = rows.get(1);
-
-            XWPFTableCell cell = xwpfTableRow.getCell(1);
-
-            cell.setText("测试数据");
-
-            //  wordOperator.fillTableData(tables.get(0),0,data);
+           wordOperator.fillTableData(tables.get(0),0,data);
 
 
-            wordOperator.printTable(xwpfTable);
 
-            wordOperator.saveDocument(doc, "/Users/luoyu/table1_output.docx");
+            wordOperator.saveDocument(doc, "/Users/luoyu/table3_output.docx");
 
 
 

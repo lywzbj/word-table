@@ -259,11 +259,11 @@ public class WordOperator {
      * @param filePath 目标文件路径
      * @throws IOException 写入失败时抛出
      */
-    public void saveDocument(XWPFDocument document, String filePath) throws IOException {
-        syncTextBoxTables();
-        try (FileOutputStream fos = new FileOutputStream(filePath)) {
-            document.write(fos);
-        }
+   public void saveDocument(XWPFDocument document, String filePath) throws IOException {
+       syncTextBoxTables();
+       try (FileOutputStream fos = new FileOutputStream(filePath)) {
+           document.write(fos);
+       }
         log.info("文档已保存至: {}", filePath);
     }
 
@@ -312,41 +312,67 @@ public class WordOperator {
             colToField.put(c, fieldName);
         }
 
-        // 2. 清空模板行内容
-        for (int c : colToField.keySet()) {
-            templateRow.getCell(c).setText("");
-        }
+       // 2. 清空模板行内容
+       for (int c : colToField.keySet()) {
+           // 绕过 XWPFTableCell.setText() 的 XmlBeans 缓存问题，直接重置 CT 层
+           var ctTc = table.getCTTbl().getTrList().get(dataStartRow).getTcList().get(c);
+            // 用 removeP 逐项删除而非 setPArray(null)，因为 getPList() 有缓存
+            while (ctTc.sizeOfPArray() > 0) {
+                ctTc.removeP(0);
+            }
+           ctTc.addNewP().addNewR().addNewT().setStringValue("");
+       }
 
-        // 3. 准备模板行的 CT 副本用于后续行插入
+        // 3. 准备模板行的 CT 引用用于后续行复制
         CTTbl ctTbl = table.getCTTbl();
         CTRow templateCtRow = ctTbl.getTrList().get(dataStartRow);
 
-        // 4. 遍历数据，填充每一行
-        for (int i = 0; i < data.size(); i++) {
-            Map<String, String> rowData = data.get(i);
-            XWPFTableRow targetRow;
-
-            if (i == 0) {
-                targetRow = templateRow;
-            } else {
-                CTRow newCtRow = (CTRow) templateCtRow.copy();
-                ctTbl.getTrList().add(dataStartRow + i, newCtRow);
-                targetRow = new XWPFTableRow(newCtRow, table);
+       // 4. 填充第一行（模板行）
+       Map<String, String> firstRow = data.get(0);
+       for (Map.Entry<Integer, String> entry : colToField.entrySet()) {
+           int c = entry.getKey();
+           var ctTc = table.getCTTbl().getTrList().get(dataStartRow).getTcList().get(c);
+            while (ctTc.sizeOfPArray() > 0) {
+                ctTc.removeP(0);
             }
+           ctTc.addNewP().addNewR().addNewT().setStringValue(
+               firstRow.getOrDefault(entry.getValue(), ""));
+       }
 
-            // 按列→字段映射填充数据
-            for (Map.Entry<Integer, String> entry : colToField.entrySet()) {
-                int col = entry.getKey();
-                String field = entry.getValue();
-                String value = rowData.getOrDefault(field, "");
-                if (col < targetRow.getTableCells().size()) {
-                    targetRow.getCell(col).setText(value);
-                }
-            }
-        }
+      // 5. 后续数据行：在断开副本上设置文本，再插入表格
+      for (int i = 1; i < data.size(); i++) {
+          Map<String, String> rowData = data.get(i);
+          CTRow newCtRow = (CTRow) templateCtRow.copy();
+
+          ctTbl.getTrList().add(dataStartRow + i, newCtRow);
+
+           // 从 trList 取回已挂载的行再修改，避免 copy 出来的独立对象在 add 时被 parent 重写
+           CTRow addedRow = ctTbl.getTrList().get(dataStartRow + i);
+           setCtCellTextFallback(addedRow, colToField, rowData);
+      }
 
         log.info("表格数据填充完成，从第 {} 行开始共渲染 {} 行", dataStartRow, data.size());
     }
+
+    /**
+     * CT 层回退：当 XWPFTableRow 不可用时，直接操作 CT 对象设置文本。
+     * 先清空所有已有文本，再将第一段的值设为目标值，确保即使 copy 后的结构与预期不同也能正确写入。
+     */
+   private void setCtCellTextFallback(CTRow ctRow, Map<Integer, String> colToField, Map<String, String> rowData) {
+       var tcList = ctRow.getTcList();
+       for (Map.Entry<Integer, String> entry : colToField.entrySet()) {
+           int col = entry.getKey();
+           String value = rowData.getOrDefault(entry.getValue(), "");
+           if (col >= tcList.size()) continue;
+           var ctTc = tcList.get(col);
+
+            // 逐项删除段落以正确更新 XmlBeans 内部缓存
+            while (ctTc.sizeOfPArray() > 0) {
+                ctTc.removeP(0);
+            }
+           ctTc.addNewP().addNewR().addNewT().setStringValue(value);
+       }
+   }
 
     /** 提取顶层表格（使用 POI 高级 API）。 */
     private WordTable extractTable(XWPFTable table, int index) {
