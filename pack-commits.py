@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
- Package changed files from specified commits into a tar.gz, preserving directory structure.
- 
- If the same file appears in multiple specified commits, the version from the most recent
- commit (by commit date) is kept.
- 
- Usage: python pack-commits.py [-o output.tar.gz] <commit1> [commit2] [...]
+Package changed files from specified commits into a tar.gz, preserving directory structure.
+
+If the same file appears in multiple specified commits, the version from the most recent
+commit (by commit date) is kept.
+
+A CHANGELOG.md is included in the archive recording commit hashes, subjects, and per-commit file lists.
+
+Usage: python pack-commits.py [-o output.tar.gz] <commit1> [commit2] [...]
 """
 
 import argparse
+import datetime
 import subprocess
 import sys
 import tarfile
@@ -37,6 +40,30 @@ def format_size(size: int) -> str:
         return f"{size // 1048576}M"
 
 
+def build_changelog(commits: list[str], files_map: dict[str, list[str]]) -> str:
+    """Build a CHANGELOG.md from commit info."""
+    lines: list[str] = []
+    lines.append("# Change Log\n\n")
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %z")
+    lines.append(f"Generated: {now}\n")
+    branch = git_text("rev-parse", "--abbrev-ref", "HEAD") or "(detached)"
+    lines.append(f"Branch: {branch}\n\n")
+    lines.append(f"## Commits ({len(commits)})\n\n")
+    for ch in commits:
+        short = git_text("rev-parse", "--short", ch) or ch[:7]
+        subj = git_text("log", "--format=%s", "-n1", ch) or ""
+        lines.append(f"### {short} - {subj}\n\n")
+        files = files_map.get(ch, [])
+        if files:
+            lines.append("| File |\n|------|\n")
+            for f in files:
+                lines.append(f"| `{f}` |\n")
+        else:
+            lines.append("*(empty commit)*\n")
+        lines.append("\n")
+    return "".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Package changed files from specified commits into tar.gz"
@@ -51,13 +78,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Validate every commit
     for c in args.commits:
         if git_text("cat-file", "-e", f"{c}^{{commit}}") is None:
             print(f"Error: {c} is not a valid commit", file=sys.stderr)
             sys.exit(1)
 
-    # Sort commits by date (oldest first — later commits overwrite earlier ones)
     print("→ Resolving commits...")
     sorted_raw = git_text(
         "rev-list", "--no-walk", "--date-order", "--reverse", *args.commits
@@ -67,6 +92,8 @@ def main() -> None:
         sys.exit(1)
     sorted_commits = sorted_raw.splitlines()
 
+    commit_files_map: dict[str, list[str]] = {}
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
 
@@ -74,7 +101,6 @@ def main() -> None:
             short = git_text("rev-parse", "--short", commit) or commit[:7]
             print(f"→ Processing {short} ...")
 
-            # List files changed in this commit
             files_raw = git_text(
                 "diff-tree",
                 "--no-commit-id",
@@ -83,13 +109,16 @@ def main() -> None:
                 "--diff-filter=ACMR",
                 commit,
             )
+            per_commit_files: list[str] = []
             if not files_raw:
+                commit_files_map[commit] = []
                 continue
 
             for rel_path in files_raw.splitlines():
                 rel_path = rel_path.strip()
                 if not rel_path:
                     continue
+                per_commit_files.append(rel_path)
 
                 target = tmp / rel_path
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,13 +129,17 @@ def main() -> None:
                 else:
                     print(f"  Warning: cannot extract {rel_path}")
 
-        # Count unique files after dedup
+            commit_files_map[commit] = per_commit_files
+
         file_count = sum(1 for f in tmp.rglob("*") if f.is_file())
         if file_count == 0:
             print("→ No changed files in the specified commits")
             sys.exit(0)
 
-        # Package with tarfile
+        # Build and write changelog into the temp dir so it gets packaged
+        changelog = build_changelog(sorted_commits, commit_files_map)
+        (tmp / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+
         print(f"→ Packaging to {args.o} ...")
         with tarfile.open(args.o, "w:gz") as tar:
             for f in tmp.rglob("*"):
