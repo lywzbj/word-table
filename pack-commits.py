@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-提取指定提交（可不连续）的变更文件并打包（保留目录结构）。
-
-同一文件在多个指定提交中出现时，保留提交时间上最新的版本。
-
-用法: python pack-commits.py [-o output.tar.gz] <commit1> [commit2] [...]
+ Package changed files from specified commits into a tar.gz, preserving directory structure.
+ 
+ If the same file appears in multiple specified commits, the version from the most recent
+ commit (by commit date) is kept.
+ 
+ Usage: python pack-commits.py [-o output.tar.gz] <commit1> [commit2] [...]
 """
 
 import argparse
@@ -38,31 +39,31 @@ def format_size(size: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="提取指定提交（可不连续）的变更文件并打包"
+        description="Package changed files from specified commits into tar.gz"
     )
     parser.add_argument(
         "-o",
         default="commits-changes.tar.gz",
-        help="输出文件名（默认: commits-changes.tar.gz）",
+        help="Output filename (default: commits-changes.tar.gz)",
     )
     parser.add_argument(
-        "commits", nargs="+", help="一个或多个提交哈希（支持短哈希和完整哈希）"
+        "commits", nargs="+", help="One or more commit hashes (short or full)"
     )
     args = parser.parse_args()
 
     # Validate every commit
     for c in args.commits:
         if git_text("cat-file", "-e", f"{c}^{{commit}}") is None:
-            print(f"错误：{c} 不是有效的提交", file=sys.stderr)
+            print(f"Error: {c} is not a valid commit", file=sys.stderr)
             sys.exit(1)
 
     # Sort commits by date (oldest first — later commits overwrite earlier ones)
-    print("→ 解析提交...")
+    print("→ Resolving commits...")
     sorted_raw = git_text(
         "rev-list", "--no-walk", "--date-order", "--reverse", *args.commits
     )
     if not sorted_raw:
-        print("错误：无法解析提交", file=sys.stderr)
+        print("Error: unable to resolve commits", file=sys.stderr)
         sys.exit(1)
     sorted_commits = sorted_raw.splitlines()
 
@@ -71,7 +72,7 @@ def main() -> None:
 
         for commit in sorted_commits:
             short = git_text("rev-parse", "--short", commit) or commit[:7]
-            print(f"→ 处理 {short} ...")
+            print(f"→ Processing {short} ...")
 
             # List files changed in this commit
             files_raw = git_text(
@@ -97,16 +98,16 @@ def main() -> None:
                 if content is not None:
                     target.write_bytes(content)
                 else:
-                    print(f"  警告：无法提取 {rel_path}")
+                    print(f"  Warning: cannot extract {rel_path}")
 
         # Count unique files after dedup
         file_count = sum(1 for f in tmp.rglob("*") if f.is_file())
         if file_count == 0:
-            print("→ 指定提交中没有可提取的变更文件")
+            print("→ No changed files in the specified commits")
             sys.exit(0)
 
         # Package with tarfile
-        print(f"→ 打包到 {args.o} ...")
+        print(f"→ Packaging to {args.o} ...")
         with tarfile.open(args.o, "w:gz") as tar:
             for f in tmp.rglob("*"):
                 if f.is_file():
@@ -114,8 +115,8 @@ def main() -> None:
 
         size = Path(args.o).stat().st_size
         print(
-            f"✅ 完成！{args.o} ({format_size(size)})"
-            f" — {len(sorted_commits)} 个提交，去重后 {file_count} 个文件"
+            f"Done: {args.o} ({format_size(size)})"
+            f" — {len(sorted_commits)} commit(s), {file_count} unique file(s)"
         )
 
 
