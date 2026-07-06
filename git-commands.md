@@ -92,7 +92,7 @@
  | 文件过滤 | 只提取新增/修改/重命名的文件（`--diff-filter=ACMR`） |
  | 目录结构 | 完全保留，解压后可直接覆盖到对应仓库路径 |
 
-### 3.设置代理拉取分支
+### 3.设置代理推/拉取分支
 ```dtd
-git -c http.proxy=http://127.0.0.1:7890 pull
+git -c http.proxy=http://127.0.0.1:7890 pull/push origin main
 ```
